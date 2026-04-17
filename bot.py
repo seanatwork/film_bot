@@ -62,7 +62,14 @@ def _build_message(media: Media, max_len: int = 4096) -> str:
     if len(overview) > budget:
         overview = overview[: max(budget - 3, 0)] + "..."
 
-    return poster_line + header + escape(overview)
+    message = poster_line + header + escape(overview)
+    
+    # Add IMDB link if available
+    if media.imdb_id:
+        imdb_url = f"https://www.imdb.com/title/{media.imdb_id}"
+        message += f"\n\n🎬 <a href=\"{imdb_url}\">View on IMDB</a>"
+
+    return message
 
 
 async def inline_handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

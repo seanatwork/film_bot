@@ -29,6 +29,7 @@ class Media:
     overview: str
     vote_average: float
     runtime: Optional[int]
+    imdb_id: Optional[str]
     poster_url_thumb: Optional[str]
     poster_url_full: Optional[str]
 
@@ -135,6 +136,7 @@ async def search_media(query: str) -> list[Media]:
                 overview=item.get("overview") or "",
                 vote_average=float(item.get("vote_average") or 0.0),
                 runtime=None,
+                imdb_id=None,
                 poster_url_thumb=(TMDB_IMG_THUMB + item["poster_path"]) if item.get("poster_path") else None,
                 poster_url_full=(TMDB_IMG_FULL + item["poster_path"]) if item.get("poster_path") else None,
             )
@@ -151,6 +153,7 @@ async def search_media(query: str) -> list[Media]:
                 overview=item.get("overview") or "",
                 vote_average=float(item.get("vote_average") or 0.0),
                 runtime=None,
+                imdb_id=None,
                 poster_url_thumb=(TMDB_IMG_THUMB + item["poster_path"]) if item.get("poster_path") else None,
                 poster_url_full=(TMDB_IMG_FULL + item["poster_path"]) if item.get("poster_path") else None,
             )
@@ -174,15 +177,20 @@ async def search_media(query: str) -> list[Media]:
         for media, details in zip(top_media, details_list):
             if isinstance(details, Exception):
                 media.runtime = None
+                media.imdb_id = None
             else:
                 if media.media_type == "movie":
                     media.runtime = details.get("runtime")
+                    media.imdb_id = details.get("imdb_id")
                 else:
                     # TV shows have episode_run_time as an array, take the first value
                     episode_runtimes = details.get("episode_run_time", [])
                     media.runtime = episode_runtimes[0] if episode_runtimes else None
+                    # TV shows external_ids contains imdb_id
+                    external_ids = details.get("external_ids", {})
+                    media.imdb_id = external_ids.get("imdb_id")
     except Exception:
-        pass  # If parallel fetch fails, runtime stays None
+        pass  # If parallel fetch fails, runtime and imdb_id stay None
 
     async with _cache_lock:
         _cache[key] = media_items

@@ -1,0 +1,8 @@
+app = "film-bot"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TELEGRAM_TOKEN = ""
+  TMDB_API_KEY = ""

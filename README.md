@@ -1,14 +1,15 @@
 # Film Bot
 
-A Telegram inline bot that searches for movies using The Movie Database (TMDb) API and displays movie information including title, year, runtime, rating, and overview.
+A Telegram inline bot that searches for movies and TV shows using The Movie Database (TMDb) API and displays information including title, year, runtime, rating, and overview.
 
 ## Features
 
-- **Inline Search**: Type `@botname <movie title>` in any Telegram chat to search for movies
+- **Inline Search**: Type `@botname <title>` in any Telegram chat to search for movies and TV shows
 - **Rich Information**: Displays title, year, runtime, rating, and overview
-- **Poster Images**: Shows movie poster URL for easy viewing
-- **Efficient API Usage**: Caches search results and movie details to minimize API calls
-- **Parallel Fetching**: Fetches movie details in parallel for faster response times
+- **Poster Images**: Shows poster URL for easy viewing
+- **Efficient API Usage**: Caches search results and media details to minimize API calls
+- **Parallel Fetching**: Fetches media details in parallel for faster response times
+- **Dual Search**: Searches both movies and TV shows simultaneously
 
 ## Prerequisites
 

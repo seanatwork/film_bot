@@ -20,7 +20,7 @@ from telegram.ext import (
     InlineQueryHandler,
 )
 
-from tmdb import Movie, close_client, search_movies
+from tmdb import Media, close_client, search_media
 
 TOKEN: Final = config("TELEGRAM_TOKEN", cast=str)
 
@@ -34,29 +34,31 @@ logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
-        f"Hi! I look up films from TMDb.\n\n"
-        f"Type @{context.bot.username} <movie title> in any chat to search inline."
+        f"Hi! I look up movies and TV shows from TMDb.\n\n"
+        f"Type @{context.bot.username} <title> in any chat to search inline."
     )
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
         f"Inline usage:\n"
-        f"  @{context.bot.username} <movie title>\n\n"
-        f"Picking a result posts a large poster with title, year, runtime, rating, and overview."
+        f"  @{context.bot.username} <title>\n\n"
+        f"Picking a result posts a poster with title, year, runtime, rating, and overview.\n"
+        f"Searches both movies and TV shows."
     )
 
 
-def _build_message(movie: Movie, max_len: int = 4096) -> str:
-    year = movie.release_date[:4] if movie.release_date else "—"
-    rating = f"{movie.vote_average:.1f}/10" if movie.vote_average else "N/A"
-    runtime = f"{movie.runtime} min" if movie.runtime else "—"
+def _build_message(media: Media, max_len: int = 4096) -> str:
+    year = media.release_date[:4] if media.release_date else "—"
+    rating = f"{media.vote_average:.1f}/10" if media.vote_average else "N/A"
+    runtime = f"{media.runtime} min" if media.runtime else "—"
+    media_type = "TV Show" if media.media_type == "tv" else "Movie"
 
-    poster_line = f"{movie.poster_url_full}\n\n" if movie.poster_url_full else ""
-    header = f"<b>{escape(movie.title)}</b> ({escape(year)})\n{runtime}\n⭐ {rating}\n\n"
+    poster_line = f"{media.poster_url_full}\n\n" if media.poster_url_full else ""
+    header = f"<b>{escape(media.title)}</b> ({escape(year)})\n{media_type} · {runtime}\n⭐ {rating}\n\n"
 
     budget = max_len - len(poster_line) - len(header)
-    overview = (movie.overview or "No overview available.").strip()
+    overview = (media.overview or "No overview available.").strip()
     if len(overview) > budget:
         overview = overview[: max(budget - 3, 0)] + "..."
 
@@ -69,18 +71,19 @@ async def inline_handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     try:
-        movies = await search_movies(query)
+        media_items = await search_media(query)
     except Exception:
         logger.exception("TMDb search failed for %r", query)
         await update.inline_query.answer([], cache_time=1)
         return
 
     results = []
-    for m in movies[:25]:
+    for m in media_items[:25]:
         year = m.release_date[:4] if m.release_date else "—"
         rating = f"{m.vote_average:.1f}/10" if m.vote_average else "N/A"
+        media_type = "TV" if m.media_type == "tv" else "Movie"
         title = f"{m.title} ({year})"
-        description_parts = [rating]
+        description_parts = [media_type, rating]
         if m.overview:
             description_parts.append(m.overview[:80])
         description = " · ".join(description_parts)

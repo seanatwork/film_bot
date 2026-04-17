@@ -21,8 +21,9 @@ _client: Optional[httpx.AsyncClient] = None
 
 
 @dataclass
-class Movie:
+class Media:
     id: int
+    media_type: str  # "movie" or "tv"
     title: str
     release_date: str
     overview: str
@@ -48,7 +49,7 @@ async def close_client() -> None:
 
 async def fetch_movie_details(movie_id: int) -> dict:
     async with _details_cache_lock:
-        cached = _details_cache.get(movie_id)
+        cached = _details_cache.get(f"movie_{movie_id}")
     if cached is not None:
         return cached
 
@@ -62,11 +63,31 @@ async def fetch_movie_details(movie_id: int) -> dict:
     data = r.json()
 
     async with _details_cache_lock:
-        _details_cache[movie_id] = data
+        _details_cache[f"movie_{movie_id}"] = data
     return data
 
 
-async def search_movies(query: str) -> list[Movie]:
+async def fetch_tv_details(tv_id: int) -> dict:
+    async with _details_cache_lock:
+        cached = _details_cache.get(f"tv_{tv_id}")
+    if cached is not None:
+        return cached
+
+    r = await _get_client().get(
+        f"/tv/{tv_id}",
+        params={
+            "api_key": TMDB_API_KEY,
+        },
+    )
+    r.raise_for_status()
+    data = r.json()
+
+    async with _details_cache_lock:
+        _details_cache[f"tv_{tv_id}"] = data
+    return data
+
+
+async def search_media(query: str) -> list[Media]:
     key = query.lower().strip()
     if not key:
         return []
@@ -76,7 +97,8 @@ async def search_movies(query: str) -> list[Movie]:
     if cached is not None:
         return cached
 
-    r = await _get_client().get(
+    # Search both movies and TV shows in parallel
+    movie_task = _get_client().get(
         "/search/movie",
         params={
             "api_key": TMDB_API_KEY,
@@ -84,17 +106,30 @@ async def search_movies(query: str) -> list[Movie]:
             "include_adult": False,
         },
     )
-    r.raise_for_status()
-    data = r.json()
+    tv_task = _get_client().get(
+        "/search/tv",
+        params={
+            "api_key": TMDB_API_KEY,
+            "query": query,
+            "include_adult": False,
+        },
+    )
 
-    results = data.get("results", [])
-    
-    # First, create Movie objects without runtime
-    movies = []
-    for item in results:
-        movies.append(
-            Movie(
+    movie_response, tv_response = await asyncio.gather(movie_task, tv_task)
+    movie_response.raise_for_status()
+    tv_response.raise_for_status()
+
+    movie_data = movie_response.json()
+    tv_data = tv_response.json()
+
+    media_items = []
+
+    # Process movies
+    for item in movie_data.get("results", []):
+        media_items.append(
+            Media(
                 id=item["id"],
+                media_type="movie",
                 title=item.get("title") or item.get("original_title") or "Unknown",
                 release_date=item.get("release_date") or "",
                 overview=item.get("overview") or "",
@@ -105,20 +140,50 @@ async def search_movies(query: str) -> list[Movie]:
             )
         )
 
-    # Only fetch runtime for top 10 results in parallel
-    top_movies = movies[:10]
-    detail_tasks = [fetch_movie_details(m.id) for m in top_movies]
-    
+    # Process TV shows
+    for item in tv_data.get("results", []):
+        media_items.append(
+            Media(
+                id=item["id"],
+                media_type="tv",
+                title=item.get("name") or item.get("original_name") or "Unknown",
+                release_date=item.get("first_air_date") or "",
+                overview=item.get("overview") or "",
+                vote_average=float(item.get("vote_average") or 0.0),
+                runtime=None,
+                poster_url_thumb=(TMDB_IMG_THUMB + item["poster_path"]) if item.get("poster_path") else None,
+                poster_url_full=(TMDB_IMG_FULL + item["poster_path"]) if item.get("poster_path") else None,
+            )
+        )
+
+    # Sort by vote average and take top 25
+    media_items.sort(key=lambda x: x.vote_average, reverse=True)
+    media_items = media_items[:25]
+
+    # Fetch runtime for top 10 in parallel
+    top_media = media_items[:10]
+    detail_tasks = []
+    for m in top_media:
+        if m.media_type == "movie":
+            detail_tasks.append(fetch_movie_details(m.id))
+        else:
+            detail_tasks.append(fetch_tv_details(m.id))
+
     try:
         details_list = await asyncio.gather(*detail_tasks, return_exceptions=True)
-        for movie, details in zip(top_movies, details_list):
+        for media, details in zip(top_media, details_list):
             if isinstance(details, Exception):
-                movie.runtime = None
+                media.runtime = None
             else:
-                movie.runtime = details.get("runtime")
+                if media.media_type == "movie":
+                    media.runtime = details.get("runtime")
+                else:
+                    # TV shows have episode_run_time as an array, take the first value
+                    episode_runtimes = details.get("episode_run_time", [])
+                    media.runtime = episode_runtimes[0] if episode_runtimes else None
     except Exception:
         pass  # If parallel fetch fails, runtime stays None
 
     async with _cache_lock:
-        _cache[key] = movies
-    return movies
+        _cache[key] = media_items
+    return media_items

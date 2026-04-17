@@ -1,8 +1,16 @@
-app = "film-bot"
+# fly.toml app configuration file generated for film-bot on 2026-04-17T08:27:13-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'film-bot'
+primary_region = 'dfw'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
-[env]
-  TELEGRAM_TOKEN = ""
-  TMDB_API_KEY = ""
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024
